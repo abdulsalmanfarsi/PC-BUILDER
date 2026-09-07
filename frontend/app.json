@@ -1,0 +1,60 @@
+{
+  "expo": {
+    "name": "RigCraft",
+    "slug": "pc-builder-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+
+    "icon": "./assets/images/icon.png",
+
+    "scheme": "rigcraft",
+
+    "userInterfaceStyle": "automatic",
+
+    "newArchEnabled": true,
+
+    "ios": {
+      "supportsTablet": true
+    },
+
+    "android": {
+      "permissions": [
+        "android.permission.INTERNET"
+      ],
+
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/icon.png",
+        "backgroundColor": "#0B0709"
+      },
+
+      "softwareKeyboardLayoutMode": "resize",
+
+      "edgeToEdgeEnabled": true,
+
+      "predictiveBackGestureEnabled": false,
+
+      "package": "com.mohammedabdulsalman.pcbuildermobile"
+    },
+
+    "web": {
+      "output": "static"
+    },
+
+    "plugins": [
+      "expo-router"
+    ],
+
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    },
+
+    "extra": {
+      "router": {},
+
+      "eas": {
+        "projectId": "cd61867a-c881-4213-9c27-a24b815351d6"
+      }
+    }
+  }
+}
