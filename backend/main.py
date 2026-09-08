@@ -6,6 +6,7 @@ Run with: uvicorn main:app --reload
 from typing import Optional
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from tavily import TavilyClient
 
@@ -14,6 +15,21 @@ from core_engine import run_conversation
 
 
 app = FastAPI(title="PC Builder Advisor API")
+
+
+# ==========================================
+# CORS
+# ==========================================
+
+# Allows the Expo mobile app and web application
+# to communicate with this FastAPI backend.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 # ==========================================
@@ -67,7 +83,6 @@ def ask(request: AskRequest):
     then runs the AI tool-calling loop.
     """
 
-    # Start a fresh conversation if no history exists
     history = (
         request.history
         if request.history
