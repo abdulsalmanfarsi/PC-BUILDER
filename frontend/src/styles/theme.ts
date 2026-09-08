@@ -445,48 +445,61 @@ export function createStyles(theme: ThemeName) {
       marginTop: 4,
     },
 
-    buildActions: {
-      flexDirection: "row",
-      gap: 8,
-      marginTop: 15,
-    },
+buildActions: {
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "space-around",
+  marginTop: 15,
+},
 
-    saveBuildButton: {
-      flex: 1,
-      backgroundColor: colors.accentStrong,
-      paddingVertical: 12,
-      borderRadius: 12,
-      alignItems: "center",
-    },
+iconAction: {
+  flex: 1,
+  alignItems: "center",
+  justifyContent: "center",
+  paddingVertical: 10,
+},
 
-    shareBuildButton: {
-      flex: 1,
-      backgroundColor: colors.surfaceStrong,
-      paddingVertical: 12,
-      borderRadius: 12,
-      alignItems: "center",
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
+iconActionText: {
+  fontSize: 12,
+  fontWeight: "500",
+  marginTop: 6,
+},
 
-    savedShareButton: {
-      flex: 1,
-    },
+saveBuildButton: {
+  flex: 1,
+  backgroundColor: colors.accentStrong,
+  paddingVertical: 12,
+  borderRadius: 12,
+  alignItems: "center",
+},
 
-    deleteBuildButton: {
-      flex: 1,
-      backgroundColor: colors.danger,
-      paddingVertical: 12,
-      borderRadius: 12,
-      alignItems: "center",
-    },
+shareBuildButton: {
+  flex: 1,
+  backgroundColor: colors.surfaceStrong,
+  paddingVertical: 12,
+  borderRadius: 12,
+  alignItems: "center",
+  borderWidth: 1,
+  borderColor: colors.border,
+},
 
-    buildActionText: {
-      color: "#FFFFFF",
-      fontWeight: "700",
-      fontSize: 13,
-    },
+savedShareButton: {
+  flex: 1,
+},
 
+deleteBuildButton: {
+  flex: 1,
+  backgroundColor: colors.danger,
+  paddingVertical: 12,
+  borderRadius: 12,
+  alignItems: "center",
+},
+
+buildActionText: {
+  color: "#FFFFFF",
+  fontWeight: "700",
+  fontSize: 13,
+},
     loadingContainer: {
       flexDirection: "row",
       alignItems: "center",
