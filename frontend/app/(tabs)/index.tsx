@@ -997,20 +997,25 @@ Built with RigCraft`;
   }
 
 
-  // ==========================================
-  // BACKGROUND IMAGE
-  // ==========================================
+// ==========================================
+// BACKGROUND IMAGE
+// ==========================================
+
+const isWeb = Platform.OS === "web";
 
 const backgroundImage =
   theme === "solar"
-    ? require("../../assets/images/space-background.png")
-    : require("../../assets/images/snow-background.png");
+    ? isWeb
+      ? require("../../assets/images/space-background-web.png")
+      : require("../../assets/images/space-background.png")
+    : isWeb
+      ? require("../../assets/images/snow-background-web.png")
+      : require("../../assets/images/snow-background.png");
 
 const backgroundOverlay =
   theme === "solar"
     ? "rgba(5, 9, 18, 0.72)"
     : "rgba(245, 250, 255, 0.70)";
-
   // ==========================================
   // MAIN APP
   // ==========================================

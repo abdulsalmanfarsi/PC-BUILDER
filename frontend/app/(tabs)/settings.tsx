@@ -1,24 +1,29 @@
 import {
-    FlatList,
-    Modal,
-    Pressable,
-    Text,
-    View,
+  FlatList,
+  Modal,
+  Platform,
+  Pressable,
+  Text,
+  View,
 } from "react-native";
 
 import {
-    useEffect,
-    useState,
+  useEffect,
+  useState,
 } from "react";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import {
-    UserMarket,
+  useRouter,
+} from "expo-router";
+
+import {
+  UserMarket,
 } from "../../src/types";
 
 import {
-    useTheme,
+  useTheme,
 } from "../../src/context/ThemeContext";
 
 
@@ -65,13 +70,19 @@ const MARKETS: UserMarket[] = [
 
 
 export default function Settings() {
+
+  const router = useRouter();
+
+
   const {
     theme,
     setTheme,
   } = useTheme();
 
+
   const [market, setMarket] =
     useState<UserMarket | null>(null);
+
 
   const [marketModalVisible, setMarketModalVisible] =
     useState(false);
@@ -83,47 +94,66 @@ export default function Settings() {
 
 
   async function loadMarket() {
+
     try {
+
       const savedMarket =
         await AsyncStorage.getItem(
           USER_MARKET_KEY
         );
 
+
       if (savedMarket) {
-        setMarket(JSON.parse(savedMarket));
+
+        setMarket(
+          JSON.parse(savedMarket)
+        );
+
       }
+
     } catch (error) {
+
       console.log(
         "Could not load market:",
         error
       );
+
     }
+
   }
 
 
   async function changeMarket(
     selectedMarket: UserMarket
   ) {
+
     try {
+
       await AsyncStorage.setItem(
         USER_MARKET_KEY,
         JSON.stringify(selectedMarket)
       );
 
+
       setMarket(selectedMarket);
+
 
       setMarketModalVisible(false);
 
     } catch (error) {
+
       console.log(
         "Could not save market:",
         error
       );
+
     }
+
   }
 
 
-  const isSnow = theme === "snow";
+  const isSnow =
+    theme === "snow";
 
 
   const colors = isSnow
@@ -147,7 +177,27 @@ export default function Settings() {
       };
 
 
+  const isWeb =
+    Platform.OS === "web";
+
+
+  function handleBack() {
+
+    if (router.canGoBack()) {
+
+      router.back();
+
+    } else {
+
+      router.replace("/");
+
+    }
+
+  }
+
+
   return (
+
     <View
       style={{
         flex: 1,
@@ -156,6 +206,49 @@ export default function Settings() {
         paddingHorizontal: 20,
       }}
     >
+
+      {/* WEB BACK BUTTON */}
+
+      {isWeb && (
+
+        <Pressable
+          onPress={handleBack}
+
+          style={{
+            alignSelf: "flex-start",
+
+            paddingVertical: 10,
+
+            paddingHorizontal: 14,
+
+            borderRadius: 12,
+
+            backgroundColor: colors.surface,
+
+            borderWidth: 1,
+
+            borderColor: colors.border,
+
+            marginBottom: 20,
+          }}
+        >
+
+          <Text
+            style={{
+              color: colors.text,
+
+              fontSize: 15,
+
+              fontWeight: "600",
+            }}
+          >
+            ← Back
+          </Text>
+
+        </Pressable>
+
+      )}
+
 
       <Text
         style={{
@@ -214,6 +307,7 @@ export default function Settings() {
       >
 
         <View>
+
           <Text
             style={{
               color: colors.text,
@@ -224,6 +318,7 @@ export default function Settings() {
             Country
           </Text>
 
+
           <Text
             style={{
               color: colors.muted,
@@ -233,6 +328,7 @@ export default function Settings() {
           >
             {market?.country || "Not selected"}
           </Text>
+
         </View>
 
 
@@ -266,7 +362,9 @@ export default function Settings() {
       {/* SNOW */}
 
       <Pressable
-        onPress={() => setTheme("snow")}
+        onPress={() =>
+          setTheme("snow")
+        }
 
         style={{
           backgroundColor:
@@ -314,7 +412,9 @@ export default function Settings() {
       {/* SOLAR */}
 
       <Pressable
-        onPress={() => setTheme("solar")}
+        onPress={() =>
+          setTheme("solar")
+        }
 
         style={{
           backgroundColor:
@@ -477,5 +577,7 @@ export default function Settings() {
       </Modal>
 
     </View>
+
   );
+
 }
