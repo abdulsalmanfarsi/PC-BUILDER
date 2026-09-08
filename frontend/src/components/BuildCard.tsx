@@ -1,4 +1,12 @@
-import { Pressable, Text, View } from "react-native";
+import {
+  Pressable,
+  Text,
+  View,
+} from "react-native";
+
+import { Feather } from "@expo/vector-icons";
+
+import { useState } from "react";
 
 import { Build } from "../types";
 
@@ -31,11 +39,51 @@ export default function BuildCard({
   const styles = createStyles(theme);
 
 
+  const [liked, setLiked] = useState(false);
+
+  const [disliked, setDisliked] = useState(false);
+
+
+  const iconColor =
+    theme === "snow"
+      ? "#61738B"
+      : "#AAB4C5";
+
+
+  const activeColor =
+    theme === "snow"
+      ? "#2878B8"
+      : "#9A6CFF";
+
+
+  function handleLike() {
+
+    setLiked(!liked);
+
+    if (!liked) {
+      setDisliked(false);
+    }
+
+  }
+
+
+  function handleDislike() {
+
+    setDisliked(!disliked);
+
+    if (!disliked) {
+      setLiked(false);
+    }
+
+  }
+
+
   return (
     <View
       key={`${build.Name}-${index}`}
       style={styles.buildCard}
     >
+
       <View style={styles.buildCardHeader}>
 
         <Text style={styles.buildName}>
@@ -54,6 +102,7 @@ export default function BuildCard({
 
       <View style={styles.specRow}>
         <Text style={styles.specLabel}>CPU</Text>
+
         <Text style={styles.specValue}>
           {build.CPU || "Not specified"}
         </Text>
@@ -62,6 +111,7 @@ export default function BuildCard({
 
       <View style={styles.specRow}>
         <Text style={styles.specLabel}>GPU</Text>
+
         <Text style={styles.specValue}>
           {build.GPU || "Not specified"}
         </Text>
@@ -142,49 +192,188 @@ export default function BuildCard({
       </View>
 
 
-      <View style={styles.buildActions}>
+      {/* NORMAL BUILD ACTIONS */}
 
-        {!saved && onSave && (
+      {!saved && (
+
+        <View style={styles.buildActions}>
+
+          {onSave && (
+
+            <Pressable
+              style={styles.iconAction}
+              onPress={() => onSave(build)}
+            >
+
+              <Feather
+                name="copy"
+                size={27}
+                color={iconColor}
+              />
+
+              <Text
+                style={[
+                  styles.iconActionText,
+                  { color: iconColor },
+                ]}
+              >
+                Save
+              </Text>
+
+            </Pressable>
+
+          )}
+
 
           <Pressable
-            style={styles.saveBuildButton}
-            onPress={() => onSave(build)}
+            style={styles.iconAction}
+            onPress={() => onShare(build)}
           >
-            <Text style={styles.buildActionText}>
-              💾 Save
+
+            <Feather
+              name="share-2"
+              size={27}
+              color={iconColor}
+            />
+
+            <Text
+              style={[
+                styles.iconActionText,
+                { color: iconColor },
+              ]}
+            >
+              Share
             </Text>
+
           </Pressable>
 
-        )}
-
-
-        <Pressable
-          style={[
-            styles.shareBuildButton,
-            saved && styles.savedShareButton,
-          ]}
-          onPress={() => onShare(build)}
-        >
-          <Text style={styles.buildActionText}>
-            📤 Share
-          </Text>
-        </Pressable>
-
-
-        {saved && onDelete && (
 
           <Pressable
-            style={styles.deleteBuildButton}
-            onPress={() => onDelete(build)}
+            style={styles.iconAction}
+            onPress={handleLike}
           >
-            <Text style={styles.buildActionText}>
-              🗑 Delete
+
+            <Feather
+              name="thumbs-up"
+              size={27}
+              color={
+                liked
+                  ? activeColor
+                  : iconColor
+              }
+            />
+
+            <Text
+              style={[
+                styles.iconActionText,
+                {
+                  color:
+                    liked
+                      ? activeColor
+                      : iconColor,
+                },
+              ]}
+            >
+              Like
             </Text>
+
           </Pressable>
 
-        )}
 
-      </View>
+          <Pressable
+            style={styles.iconAction}
+            onPress={handleDislike}
+          >
+
+            <Feather
+              name="thumbs-down"
+              size={27}
+              color={
+                disliked
+                  ? activeColor
+                  : iconColor
+              }
+            />
+
+            <Text
+              style={[
+                styles.iconActionText,
+                {
+                  color:
+                    disliked
+                      ? activeColor
+                      : iconColor,
+                },
+              ]}
+            >
+              Dislike
+            </Text>
+
+          </Pressable>
+
+        </View>
+
+      )}
+
+
+      {/* SAVED BUILD ACTIONS */}
+
+      {saved && (
+
+        <View style={styles.buildActions}>
+
+          <Pressable
+            style={styles.iconAction}
+            onPress={() => onShare(build)}
+          >
+
+            <Feather
+              name="share-2"
+              size={27}
+              color={iconColor}
+            />
+
+            <Text
+              style={[
+                styles.iconActionText,
+                { color: iconColor },
+              ]}
+            >
+              Share
+            </Text>
+
+          </Pressable>
+
+
+          {onDelete && (
+
+            <Pressable
+              style={styles.iconAction}
+              onPress={() => onDelete(build)}
+            >
+
+              <Feather
+                name="trash-2"
+                size={27}
+                color="#DC2626"
+              />
+
+              <Text
+                style={[
+                  styles.iconActionText,
+                  { color: "#DC2626" },
+                ]}
+              >
+                Delete
+              </Text>
+
+            </Pressable>
+
+          )}
+
+        </View>
+
+      )}
 
     </View>
   );
