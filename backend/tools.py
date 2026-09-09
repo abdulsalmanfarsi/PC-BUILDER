@@ -2,6 +2,8 @@ import concurrent.futures
 import datetime
 from price_extractor import IndianPriceExtractor
 
+import re
+
 def search_web(tavily_client, query, max_results=4):
     """Actually performs the web search via Tavily."""
     try:
@@ -93,7 +95,14 @@ def generate_builds(
         verified_total += data["price"]
     
     # Format the budget for comparison
-    budget_clean = float(budget.replace('₹', '').replace(',', '').strip())
+    # Remove ₹, commas, spaces, and "INR"
+    budget_clean = float(
+        budget
+        .replace('₹', '')
+        .replace(',', '')
+        .replace('INR', '')
+        .strip()
+    )
     
     # Build the response that Gemini will use
     price_summary = "\n\n" + "=" * 60 + "\n"
