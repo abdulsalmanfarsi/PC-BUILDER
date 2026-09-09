@@ -317,6 +317,99 @@ class IndianPriceExtractor:
             return price < 500 or price > 50000
         return False
 
+    def get_market_candidates(
+        self,
+        search_results: Any,
+        component_type: str,
+        currency: str = "INR",
+        limit: int = 6,
+    ) -> List[Dict[str, Any]]:
+        """Extract compact, useful candidate products from category searches.
+
+        This is intentionally broader than exact SKU verification: it is used to
+        give Gemini a small market snapshot for component selection.
+        """
+        if isinstance(search_results, dict):
+            results = search_results.get("results", []) or []
+        elif isinstance(search_results, list):
+            results = search_results
+        else:
+            return []
+
+        desired_currency = (currency or "INR").upper()
+        patterns = {
+            "CPU": ["ryzen", "intel", "core i", "xeon", "threadripper", "processor"],
+            "GPU": ["rtx", "gtx", "radeon", "rx ", "geforce", "arc", "graphics card"],
+            "Motherboard": ["b550", "b650", "b760", "z790", "x570", "x670", "a620", "h610", "motherboard"],
+            "RAM": ["ddr4", "ddr5", "ram", "memory", "vengeance", "trident", "fury"],
+            "SSD": ["ssd", "nvme", "m.2", "sata", "crucial", "samsung", "wd"],
+            "PSU": ["psu", "power supply", "rm550", "rm650", "rm750", "seasonic"],
+            "Cooler": ["cpu cooler", "cooler", "aio", "liquid cooler", "air cooler", "noctua", "deepcool"],
+            "Case": ["pc case", "computer case", "cabinet", "chassis", "nzxt", "lian li", "corsair 4000"],
+        }
+        exclusions = {
+            "CPU": ["cooler", "aio", "motherboard", "ram", "memory", "ssd", "psu", "case"],
+            "GPU": ["cooler", "aio", "motherboard", "ram", "memory", "ssd", "psu", "case"],
+            "Motherboard": ["cooler", "aio", "ram kit", "ssd", "psu", "case"],
+            "RAM": ["motherboard", "ssd", "psu", "case", "cooler"],
+            "SSD": ["motherboard", "psu", "case", "cooler", "ram"],
+            "PSU": ["motherboard", "ssd", "ram", "cooler", "case"],
+            "Cooler": ["motherboard", "ram", "ssd", "psu", "case"],
+            "Case": ["motherboard", "ram", "ssd", "psu", "cooler"],
+        }
+        keywords = patterns.get(component_type, [component_type.lower()])
+        blocked = exclusions.get(component_type, [])
+        candidates: List[Dict[str, Any]] = []
+        seen = set()
+
+        for result in results:
+            if not isinstance(result, dict):
+                continue
+            title = str(result.get("title", "")).strip()
+            content = str(result.get("content", "")).strip()
+            url = str(result.get("url", "")).strip()
+            combined = f"{title} {content}".lower()
+            if not title or not any(k in combined for k in keywords):
+                continue
+            if any(k in title.lower() for k in blocked):
+                continue
+
+            retailer = self.detect_retailer(f"{title}\n{content}\n{url}") or "unknown"
+            price_candidates = []
+            for price, found_currency, position in self._extract_price_candidates(f"{title}\n{content}"):
+                if found_currency != desired_currency:
+                    continue
+                score = self._candidate_score(f"{title}\n{content}", position)
+                price_candidates.append((score, price))
+
+            if not price_candidates:
+                continue
+
+            price_candidates.sort(key=lambda x: x[0], reverse=True)
+            _, price = price_candidates[0]
+            in_stock = not any(
+                marker in combined
+                for marker in ["out of stock", "sold out", "unavailable", "not available"]
+            )
+
+            key = (title.lower(), retailer.lower(), price, desired_currency)
+            if key in seen:
+                continue
+            seen.add(key)
+
+            candidates.append({
+                "name": title[:180],
+                "price": round(price, 2),
+                "currency": desired_currency,
+                "retailer": retailer,
+                "in_stock": in_stock,
+                "url": url,
+                "snippet": content[:280],
+            })
+
+        candidates.sort(key=lambda item: (not item["in_stock"], item["price"]))
+        return candidates[:limit]
+
     def get_best_price(
         self,
         component: str,

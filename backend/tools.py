@@ -1,4 +1,4 @@
-import concurrent.futures
+
 import datetime
 import threading
 import time
@@ -19,7 +19,7 @@ def _cache_key(query: str, max_results: int) -> str:
 
 
 def search_web(tavily_client, query, max_results=4):
-    """Search Tavily and return compact structured JSON-safe results."""
+    """Search Tavily and return compact JSON-safe results."""
     query = (query or "").strip()
     if not query:
         return {
@@ -50,28 +50,23 @@ def search_web(tavily_client, query, max_results=4):
     try:
         response = tavily_client.search(query, max_results=max_results)
         results = response.get("results", []) or []
+        compact_results = []
 
-        if not results:
-            data = {
-                "success": True,
-                "query": query,
-                "results": [],
-                "message": "No search results found.",
-            }
-        else:
-            compact_results = []
-            for r in results:
-                compact_results.append({
-                    "title": str(r.get("title", "")),
-                    "url": str(r.get("url", "")),
-                    # Keep enough context for Gemini without dumping huge pages.
-                    "content": str(r.get("content", ""))[:1200],
-                })
-            data = {
-                "success": True,
-                "query": query,
-                "results": compact_results,
-            }
+        for r in results:
+            title = str(r.get("title", "")).strip()
+            url = str(r.get("url", "")).strip()
+            content = str(r.get("content", "")).strip()
+            compact_results.append({
+                "title": title[:180],
+                "url": url,
+                "content": content[:700],
+            })
+
+        data = {
+            "success": True,
+            "query": query,
+            "results": compact_results,
+        }
 
         with _SEARCH_CACHE_LOCK:
             _SEARCH_CACHE[key] = {"timestamp": now, "data": data}
@@ -197,24 +192,30 @@ def generate_builds(
     })
 
     extractor = IndianPriceExtractor()
-    component_prices = {}
+    category_candidates = {}
 
     for comp in components_to_check:
         search_result = search_map.get(comp)
         if not search_result or not search_result.get("success"):
             continue
-        price_data = extractor.get_best_price(
-            comp,
+        candidates = extractor.get_market_candidates(
             search_result,
+            component_type=comp,
             currency=currency_hint or "INR",
+            limit=6,
         )
-        if price_data.get("best_price") is not None:
-            component_prices[comp] = price_data
+        if candidates:
+            category_candidates[comp] = candidates
 
-    verified_total = round(
-        sum(item["best_price"] for item in component_prices.values()),
-        2,
-    )
+    # Only a compact market snapshot goes back to Gemini. Raw Tavily content
+    # is deliberately not included here.
+    market_references = []
+    for item in market_search.get("results", [])[:6]:
+        market_references.append({
+            "title": item.get("title", ""),
+            "url": item.get("url", ""),
+            "snippet": item.get("content", "")[:300],
+        })
 
     return {
         "success": True,
@@ -226,13 +227,12 @@ def generate_builds(
         "date": current_year,
         "existing_parts": existing_parts or "",
         "owned_component_types": sorted(owned_types),
-        "market_search": market_search,
-        "category_prices": component_prices,
-        "category_price_total": verified_total,
+        "market_references": market_references,
+        "component_candidates": category_candidates,
         "instruction": (
-            "Select exact build components from the market research. "
-            "Category prices are research guidance, not exact SKU verification. "
-            "After selecting exact SKUs, verify those exact components before presenting exact current prices."
+            "Use these compact current-market candidates to choose exact components. "
+            "Do not treat category candidates as exact SKU price verification. "
+            "After selecting exact SKUs, call verify_component_prices for those exact components."
         ),
     }
 
@@ -258,9 +258,10 @@ def verify_component_prices(
         }
 
     components = components[:8]
-    extractor = IndianPriceExtractor()
-
     def verify_one(component):
+        # Each worker gets its own extractor because it maintains mutable
+        # de-duplication state while parsing results.
+        extractor = IndianPriceExtractor()
         query = f'"{component}" exact price {current_year}'
         if region:
             query += f" {region}"
