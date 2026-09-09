@@ -1,25 +1,17 @@
 """
-FastAPI server - FREE version (no paid APIs)
+FastAPI server - PC Builder API
 """
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List
 from tavily import TavilyClient
-import asyncio
 
 from config import TAVILY_API_KEY, SYSTEM_PROMPT, CURRENT_YEAR
 from core_engine import run_conversation
+from tools import search_web, price_extractor
 
-# Try to import price aggregator, fallback if not available
-try:
-    from price_sources.aggregator import price_aggregator
-    PRICE_AGGREGATOR_AVAILABLE = True
-except ImportError as e:
-    print(f"⚠️ Price aggregator not available: {e}")
-    PRICE_AGGREGATOR_AVAILABLE = False
-
-app = FastAPI(title="PC Builder API - Free Edition")
+app = FastAPI(title="PC Builder API")
 
 # CORS
 app.add_middleware(
@@ -50,9 +42,7 @@ class PriceCheckRequest(BaseModel):
 def health_check():
     return {
         "status": "PC Builder API is running",
-        "version": "2.0.0-free",
-        "features": ["free_scraping", "indian_retailers", "pcpartpicker"],
-        "price_aggregator": PRICE_AGGREGATOR_AVAILABLE
+        "version": "2.0.0"
     }
 
 @app.post("/ask")
@@ -74,62 +64,35 @@ def ask(request: AskRequest):
 
 @app.post("/verify-prices")
 async def verify_prices(request: PriceCheckRequest):
-    """
-    Get accurate prices using Tavily search + price extraction
-    """
-    from tools import verify_component_prices
-    
-    # Use Tavily to search for prices
-    result = verify_component_prices(
-        tavily_client=tavily_client,
-        components=request.components,
-        region=request.country,
-        current_year=CURRENT_YEAR
-    )
-    
-    # Parse the result to match the expected format
-    # The result is a string with structured price info
-    return {
-        "status": "success",
-        "data": result,
-        "components": request.components,
-        "source": "tavily"
-    }
-
-
-@app.post("/verify-prices-tavily")
-def verify_prices_tavily(request: PriceCheckRequest):
-    """
-    Fallback: Use Tavily + LLM for price verification
-    """
+    """Get prices using Tavily search"""
     if not tavily_client:
-        return {"error": "Tavily API key not configured"}
+        raise HTTPException(status_code=503, detail="Tavily client not available")
     
-    from tools import verify_component_prices
-    result = verify_component_prices(
-        tavily_client=tavily_client,
-        components=request.components,
-        region=request.country,
-        current_year=CURRENT_YEAR
-    )
+    results = []
+    for component in request.components:
+        query = f'"{component}" price {request.country}'
+        search_result = search_web(tavily_client, query, max_results=5)
+        price_data = price_extractor.get_best_price(component, search_result)
+        
+        if price_data.get("best_price"):
+            results.append({
+                "component": component,
+                "best_price": price_data["best_price"],
+                "best_retailer": price_data.get("best_retailer", "unknown"),
+                "prices": price_data.get("prices", []),
+                "success": True
+            })
+        else:
+            results.append({
+                "component": component,
+                "success": False,
+                "error": "No prices found"
+            })
     
     return {
         "status": "success",
-        "data": result,
-        "components": request.components,
-        "source": "tavily_fallback"
-    }
-
-@app.get("/price-sources/stats")
-def get_source_stats():
-    """Get statistics for price sources"""
-    return {
-        "status": "success",
-        "sources": {
-            "free_scraper": {
-                "status": "active" if PRICE_AGGREGATOR_AVAILABLE else "disabled",
-                "type": "free",
-                "sites": ["pcpartpicker", "mdcomputers", "vedant", "primeabgb", "computech"]
-            }
-        }
+        "count": len(results),
+        "country": request.country,
+        "currency": request.currency,
+        "results": results
     }

@@ -207,7 +207,7 @@ export default function BuildCard({
 
               <Feather
                 name="copy"
-                size={27}
+                size={22}
                 color={iconColor}
               />
 
@@ -232,7 +232,7 @@ export default function BuildCard({
 
             <Feather
               name="share-2"
-              size={27}
+              size={22}
               color={iconColor}
             />
 
@@ -255,7 +255,7 @@ export default function BuildCard({
 
             <Feather
               name="thumbs-up"
-              size={27}
+              size={22}
               color={
                 liked
                   ? activeColor
@@ -287,7 +287,7 @@ export default function BuildCard({
 
             <Feather
               name="thumbs-down"
-              size={27}
+              size={22}
               color={
                 disliked
                   ? activeColor
