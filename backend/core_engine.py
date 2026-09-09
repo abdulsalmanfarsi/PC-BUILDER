@@ -414,6 +414,7 @@ this previous build.
                         use_case=use_case,
                         existing_parts=existing_parts,
                         region=country,
+                        currency=currency,
                         current_year=CURRENT_YEAR
                     )
 
@@ -445,7 +446,9 @@ this previous build.
                     tool_result = compare_parts(
                         tavily_client,
                         parts_list,
-                        CURRENT_YEAR
+                        CURRENT_YEAR,
+                        region=country,
+                        currency=currency
                     )
 
                 else:
@@ -488,6 +491,7 @@ this previous build.
                         tavily_client=tavily_client,
                         components=components,
                         region=verification_region,
+                        currency=currency,
                         current_year=CURRENT_YEAR
                     )
 

@@ -184,7 +184,7 @@ BUILD RULE:
 4. PRICE VERIFICATION:
 
 - Use the user's stated currency, location, or market information
-  when searching for prices.
+  when searching for prices. Never hard-code INR or India when another market is provided.
 
 - Do NOT assume a specific country if the user's market is unknown.
 
@@ -406,7 +406,7 @@ TOOLS_GEMINI = [
                 "name": "compare_parts",
                 "description": (
                     "Compare 2 or 3 specific PC parts side by side. "
-                    "Runs a dedicated search for each part."
+                    "Runs a dedicated search for each part in the user's market."
                 ),
                 "parameters": {
                     "type": "OBJECT",
@@ -427,8 +427,8 @@ TOOLS_GEMINI = [
             {
                 "name": "generate_builds",
                 "description": (
-                    "Generate complete PC build options for a given "
-                    "budget and use case."
+                    "Gather current market research for a complete PC build "
+                    "for the given budget and use case, accounting for existing parts."
                 ),
                 "parameters": {
                     "type": "OBJECT",

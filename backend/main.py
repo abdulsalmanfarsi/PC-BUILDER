@@ -34,8 +34,8 @@ class AskRequest(BaseModel):
 
 class PriceCheckRequest(BaseModel):
     components: List[str]
-    country: str = "India"
-    currency: str = "INR"
+    country: str = ""
+    currency: str = ""
 
 # Endpoints
 @app.api_route("/", methods=["GET", "HEAD"])
