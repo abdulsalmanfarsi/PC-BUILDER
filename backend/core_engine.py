@@ -647,6 +647,60 @@ this previous build.
 
 
     # ==================================================
+    # VALIDATE PRICES IN BUILD BLOCK  👈 NEW SECTION
+    # ==================================================
+
+    def validate_build_prices(answer: str) -> str:
+        """Ensure prices in BUILD block are consistent"""
+        if "[BUILD]" not in answer or "[/BUILD]" not in answer:
+            return answer
+        
+        # Extract build block
+        match = re.search(
+            r"\[BUILD\](.*?)\[/BUILD\]",
+            answer,
+            re.DOTALL
+        )
+        
+        if not match:
+            return answer
+        
+        build_content = match.group(1)
+        
+        # Check if Estimated Total is present
+        total_match = re.search(
+            r"Estimated Total:\s*([^\n]+)",
+            build_content,
+            re.IGNORECASE
+        )
+        
+        if total_match:
+            total_text = total_match.group(1)
+            
+            # If total is a range or has "approx", it's probably fine
+            if "range" in total_text.lower() or "approx" in total_text.lower():
+                return answer
+            
+            # Extract numeric total
+            numbers = re.findall(r'[\d,]+(?:\.\d{2})?', total_text)
+            if numbers:
+                # Clean and convert
+                total = float(re.sub(r'[^\d.]', '', numbers[0]))
+                
+                # If total seems too low or high, add a warning
+                if total < 1000:
+                    # Warn that price might be incorrect
+                    answer += "\n\n⚠️ Note: The estimated total seems unusually low. Please verify component prices as they may have changed."
+                elif total > 500000:
+                    answer += "\n\n⚠️ Note: This is a high-end build. Please verify if this fits your budget and requirements."
+        
+        return answer
+
+    # Call validation before finalizing
+    answer = validate_build_prices(answer)  # 👈 THIS IS THE ACTUAL CALL
+
+
+    # ==================================================
     # FINAL SAFETY FALLBACK
     # ==================================================
 

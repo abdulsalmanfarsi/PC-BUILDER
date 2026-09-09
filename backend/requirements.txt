@@ -1,5 +1,9 @@
-requests
-tavily-python
-python-dotenv
 fastapi
 uvicorn
+python-dotenv
+tavily-python
+requests
+pydantic
+aiohttp
+beautifulsoup4
+lxml
