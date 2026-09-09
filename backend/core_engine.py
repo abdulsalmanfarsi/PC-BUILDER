@@ -100,7 +100,6 @@ def call_gemini(messages, tools=None):
     payload = {
         "contents": contents,
         "generationConfig": {
-            "temperature": 0.7,
             "maxOutputTokens": 2500
         }
     }
@@ -124,7 +123,7 @@ def call_gemini(messages, tools=None):
             API_URL,
             headers=headers,
             json=payload,
-            timeout=60
+            timeout=(10,90)
         )
 
     except requests.exceptions.Timeout:
