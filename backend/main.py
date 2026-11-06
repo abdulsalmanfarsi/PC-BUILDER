@@ -3,11 +3,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
 from tavily import TavilyClient
-
 from config import TAVILY_API_KEY
 from core_engine import run_conversation
 
+
 app = FastAPI(title="PC Builder API")
+
 
 app.add_middleware(
     CORSMiddleware,
