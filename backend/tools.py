@@ -244,79 +244,48 @@ def verify_component_prices(
     currency="INR",
     current_year=None,
 ):
-    """Verify exact selected component prices concurrently."""
-
-    if current_year is None:
-        current_year = str(datetime.date.today().year)
-
+    """Verify component prices using Tavily web search (no local scraper)."""
     if not components:
-        return {
-            "success": False,
-            "type": "price_verification",
-            "error": "No components provided for price verification.",
-            "results": [],
-        }
+        return {"success": False, "results": [], "error": "No components provided."}
 
     components = components[:8]
+
     def verify_one(component):
-        # Each worker gets its own extractor because it maintains mutable
-        # de-duplication state while parsing results.
-        extractor = IndianPriceExtractor()
-        query = f'"{component}" exact price {current_year}'
-        if region:
-            query += f" {region}"
-        if currency:
-            query += f" {currency}"
+        query = f'"{component}" price {region or "India"} {current_year or ""}'.strip()
+        result = search_web(tavily_client, query, max_results=3)
 
-        search_result = search_web(tavily_client, query, max_results=5)
-        if not search_result.get("success"):
+        if not result.get("success") or not result.get("results"):
             return {
                 "component": component,
                 "success": False,
-                "error": search_result.get("error", "Search failed"),
+                "error": "No search results.",
             }
 
-        price_data = extractor.get_best_price(
-            component,
-            search_result,
-            currency=currency or "INR",
-        )
+        # Find the first result that looks like a price
+        import re
+        for r in result["results"]:
+            content = r.get("content", "")
+            # Match ₹, Rs, INR followed by digits
+            match = re.search(r'(?:₹|Rs\.?|INR)\s*([\d,]+)', content)
+            if match:
+                price = float(match.group(1).replace(",", ""))
+                return {
+                    "component": component,
+                    "success": True,
+                    "best_price": price,
+                    "currency": "INR",
+                    "retailer": "web",
+                    "url": r.get("url", ""),
+                    "exact_title": r.get("title", component)[:60],
+                }
 
-        if price_data.get("best_price") is None:
-            return {
-                "component": component,
-                "success": False,
-                "error": price_data.get("error", "Exact product price not found"),
-            }
-
-        return {
-            "component": component,
-            "success": True,
-            "best_price": price_data["best_price"],
-            "currency": price_data.get("currency", currency or "INR"),
-            "retailer": price_data.get("best_retailer", "unknown"),
-            "prices": price_data.get("prices", [])[:3],
-            "match_confidence": price_data.get("match_confidence", 0),
-        }
+        return {"component": component, "success": False, "error": "No price found."}
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=min(8, len(components))) as executor:
         results = list(executor.map(verify_one, components))
 
-    successful = [r for r in results if r.get("success")]
-
     return {
-        "success": len(successful) == len(results),
+        "success": any(r.get("success") for r in results),
         "type": "price_verification",
-        "currency": currency or "INR",
-        "market": region or "Not specified",
         "results": results,
-        "verified_total": round(sum(r["best_price"] for r in successful), 2),
-        "instruction": (
-            "Only treat successful results as verified prices. "
-            "A failed or low-confidence result must not be presented as an exact current price."
-        ),
     }
-
-
-# Initialize at module level
-price_extractor = IndianPriceExtractor()

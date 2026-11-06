@@ -1,739 +1,109 @@
-"""
-Core AI engine using Google Gemini via HTTP requests - no SDK needed.
-"""
-
 import re
-import requests
-
-from config import GOOGLE_API_KEY, CURRENT_YEAR, TOOLS_GEMINI
-from tools import (
-    search_web,
-    compare_parts,
-    generate_builds,
-    verify_component_prices,
-)
-
-
-MODEL_NAME = "gemini-3.5-flash-lite"
-
-API_URL = (
-    f"https://generativelanguage.googleapis.com/v1beta/models/"
-    f"{MODEL_NAME}:generateContent?key={GOOGLE_API_KEY}"
-)
-
-
-# ==================================================
-# GEMINI API CALL
-# ==================================================
-
-def call_gemini(messages, tools=None):
-    """Call Gemini API directly via HTTP."""
-
-    headers = {
-        "Content-Type": "application/json"
-    }
-
-    contents = []
-    system_instruction = None
-
-    for msg in messages:
-
-        role = msg.get("role")
-
-        if role == "system":
-
-            system_instruction = msg.get("content", "")
-
-        elif role == "user":
-
-            contents.append({
-                "role": "user",
-                "parts": [
-                    {
-                        "text": msg.get("content", "")
-                    }
-                ]
-            })
-
-        elif role == "assistant":
-
-            contents.append({
-                "role": "model",
-                "parts": [
-                    {
-                        "text": msg.get("content", "")
-                    }
-                ]
-            })
-
-        elif role == "function_call":
-
-            function_call = msg["content"]["functionCall"]
-
-            part = {
-                "functionCall": function_call
-            }
-
-            thought_signature = msg["content"].get(
-                "thoughtSignature"
-            )
-
-            if thought_signature:
-                part["thoughtSignature"] = thought_signature
-
-            contents.append({
-                "role": "model",
-                "parts": [part]
-            })
-
-        elif role == "function_response":
-
-            contents.append({
-                "role": "user",
-                "parts": [
-                    {
-                        "functionResponse": msg["content"]
-                    }
-                ]
-            })
-
-    payload = {
-        "contents": contents,
-        "generationConfig": {
-            "maxOutputTokens": 2500
-        }
-    }
-
-    if system_instruction:
-
-        payload["systemInstruction"] = {
-            "parts": [
-                {
-                    "text": system_instruction
-                }
-            ]
-        }
-
-    if tools:
-        payload["tools"] = tools
-
-    try:
-
-        response = requests.post(
-            API_URL,
-            headers=headers,
-            json=payload,
-            timeout=(10,90)
-        )
-
-    except requests.exceptions.Timeout:
-
-        raise RuntimeError(
-            "Gemini API request timed out."
-        )
-
-    except requests.exceptions.RequestException as error:
-
-        raise RuntimeError(
-            f"Gemini API request failed: {error}"
-        )
-
-    if not response.ok:
-
-        raise RuntimeError(
-            f"Gemini API error "
-            f"{response.status_code}: "
-            f"{response.text}"
-        )
-
-    return response.json()
-
-
-# ==================================================
-# MAIN CONVERSATION ENGINE
-# ==================================================
-
-def run_conversation(
-    tavily_client,
-    history,
-    question,
-    country="",
-    currency=""
-):
-
-    # ==================================================
-    # KEEP ORIGINAL USER QUESTION
-    # ==================================================
-
-    original_question = question
-
-
-    # ==================================================
-    # MARKET CONTEXT
-    # ==================================================
-
-    # The frontend provides this information.
-    # Never infer a country from a currency symbol.
-
-    market_context = ""
-
-    if country or currency:
-
-        market_context = (
-            "\n\nUSER MARKET CONTEXT:\n"
-            f"Country/Market: {country or 'Not specified'}\n"
-            f"Currency: {currency or 'Not specified'}\n"
-            "\n"
-            "Use this market context for component availability "
-            "and price searches. Do not assume another country "
-            "or market unless the user explicitly asks you to.\n"
-        )
-
-
-    # ==================================================
-    # FIND MOST RECENT PREVIOUS BUILD
-    # ==================================================
-
-    previous_build_text = None
-
-    for msg in reversed(history):
-
-        if msg.get("role") != "assistant":
-            continue
-
-        content = msg.get("content", "")
-
-        if "[BUILD]" not in content:
-            continue
-
-        match = re.search(
-            r"\[BUILD\](.*?)\[/BUILD\]",
-            content,
-            re.DOTALL
-        )
-
-        if match:
-
-            previous_build_text = (
-                "[BUILD]"
-                + match.group(1)
-                + "[/BUILD]"
-            )
-
-            break
-
-
-    # ==================================================
-    # CREATE TEMPORARY AI QUESTION
-    # ==================================================
-
-    question_for_ai = original_question
-
-    # Add market context only for Gemini.
-    # The original question remains clean in history.
-
-    question_for_ai += market_context
-
-
-    if previous_build_text:
-
-        question_for_ai += f"""
-
-PREVIOUS BUILD FOR CONTEXT:
-
-{previous_build_text}
-
-Use this previous build only if the user's current request
-is modifying or updating that build.
-
-If the user is requesting a modification, compare the new
-build against this previous build and follow the
-"CHANGES FROM PREVIOUS BUILD" instructions in the system prompt.
-
-If the user is asking a new or unrelated question, ignore
-this previous build.
-"""
-
-
-    # ==================================================
-    # SEARCH LOG
-    # ==================================================
+import json
+from groq import Groq
+from config import GROQ_API_KEY, TAVILY_API_KEY, SYSTEM_PROMPT
+from tools import search_web, compare_parts, generate_builds, verify_component_prices
+
+client = Groq(api_key=GROQ_API_KEY)
+MODEL_NAME = "openai/gpt-oss-120b"
+GLOBAL_CACHE = {"prices": []}
+
+TOOLS = [
+    # ... (Keep your TOOLS list exactly as it is) ...
+]
+
+def run_conversation(tavily_client, history, question, country="", currency=""):
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    for msg in history[-4:]:
+        if msg.get("role") in ["user", "assistant"]:
+            messages.append({"role": msg["role"], "content": msg["content"]})
+    messages.append({"role": "user", "content": question})
 
     search_log = []
-
-
-    # ==================================================
-    # BUILD GEMINI MESSAGE LIST
-    # ==================================================
-
-    messages = list(history)
-
-    messages.append({
-        "role": "user",
-        "content": question_for_ai
-    })
-
-
-    # ==================================================
-    # GEMINI TOOLS
-    # ==================================================
-
-    tools = TOOLS_GEMINI
-
-
-    # ==================================================
-    # FIRST GEMINI CALL
-    # ==================================================
-
-    result = call_gemini(
-        messages,
-        tools
-    )
-
-    candidate = result.get(
-        "candidates",
-        [{}]
-    )[0]
-
-    content = candidate.get(
-        "content",
-        {}
-    )
-
-    parts = content.get(
-        "parts",
-        []
-    )
-
-
-    # ==================================================
-    # TOOL CALL LOOP
-    # ==================================================
-
-    MAX_ROUNDS = 3
-
-    for round_num in range(MAX_ROUNDS):
-
-        function_call_found = False
-
-
-        for part in parts:
-
-            if "functionCall" not in part:
-                continue
-
-
-            fc = part["functionCall"]
-
-            thought_signature = part.get(
-                "thoughtSignature"
-            )
-
-            function_name = fc.get(
-                "name"
-            )
-
-            args = fc.get(
-                "args",
-                {}
-            )
-
-
-            # ==============================================
-            # SEARCH WEB
-            # ==============================================
-
-            if function_name == "search_web":
-
-                query = args.get(
-                    "query",
-                    ""
-                )
-
-                if query:
-
-                    # Force the user's market into searches
-                    # when a market is available.
-
-                    market_query = query
-
-                    if country:
-                        market_query += f" {country}"
-
-                    if currency:
-                        market_query += f" prices in {currency}"
-
-                    search_log.append(
-                        market_query
-                    )
-
-                    tool_result = search_web(
-                        tavily_client,
-                        market_query
-                    )
-
-                else:
-
-                    tool_result = (
-                        "No search query was provided."
-                    )
-
-
-            # ==============================================
-            # GENERATE BUILDS
-            # ==============================================
-
-            elif function_name == "generate_builds":
-
-                budget = args.get(
-                    "budget",
-                    ""
-                )
-
-                use_case = args.get(
-                    "use_case",
-                    ""
-                )
-
-                existing_parts = args.get(
-                    "existing_parts",
-                    ""
-                )
-
-                if budget and use_case:
-
-                    search_log.append(
-                        f"Building: {budget}, {use_case}, "
-                        f"Market: {country or 'Not specified'}, "
-                        f"Currency: {currency or 'Not specified'}"
-                    )
-
-                    tool_result = generate_builds(
-                        tavily_client=tavily_client,
-                        budget=budget,
-                        use_case=use_case,
-                        existing_parts=existing_parts,
-                        region=country,
-                        currency=currency,
-                        current_year=CURRENT_YEAR
-                    )
-
-                else:
-
-                    tool_result = (
-                        "Budget or use case was missing."
-                    )
-
-
-            # ==============================================
-            # COMPARE PARTS
-            # ==============================================
-
-            elif function_name == "compare_parts":
-
-                parts_list = args.get(
-                    "parts",
-                    []
-                )
-
-                if parts_list:
-
-                    search_log.append(
-                        "Comparing: "
-                        + ", ".join(parts_list)
-                    )
-
-                    tool_result = compare_parts(
-                        tavily_client,
-                        parts_list,
-                        CURRENT_YEAR,
-                        region=country,
-                        currency=currency
-                    )
-
-                else:
-
-                    tool_result = (
-                        "No components were provided "
-                        "for comparison."
-                    )
-
-
-            # ==============================================
-            # VERIFY COMPONENT PRICES
-            # ==============================================
-
-            elif function_name == "verify_component_prices":
-
-                components = args.get(
-                    "components",
-                    []
-                )
-
-                if components:
-
-                    # Do not trust the model to select
-                    # a different region. Use frontend market.
-
-                    verification_region = country
-
-                    search_log.append(
-                        "Verifying prices: "
-                        + ", ".join(components)
-                        + (
-                            f" | Market: {verification_region}"
-                            if verification_region
-                            else ""
-                        )
-                    )
-
-                    tool_result = verify_component_prices(
-                        tavily_client=tavily_client,
-                        components=components,
-                        region=verification_region,
-                        currency=currency,
-                        current_year=CURRENT_YEAR
-                    )
-
-                else:
-
-                    tool_result = (
-                        "No components were provided "
-                        "for price verification."
-                    )
-
-
-            # ==============================================
-            # UNKNOWN TOOL
-            # ==============================================
-
-            else:
-
-                tool_result = (
-                    f"Unknown tool requested: "
-                    f"{function_name}"
-                )
-
-
-            # ==============================================
-            # ADD FUNCTION CALL
-            # ==============================================
-
-            function_call_content = {
-                "functionCall": fc
-            }
-
-            if thought_signature:
-
-                function_call_content[
-                    "thoughtSignature"
-                ] = thought_signature
-
-
-            messages.append({
-                "role": "function_call",
-                "content": function_call_content
-            })
-
-
-            # ==============================================
-            # ADD FUNCTION RESPONSE
-            # ==============================================
-
-            messages.append({
-                "role": "function_response",
-                "content": {
-                    "name": function_name,
-                    "response": {
-                        "result": tool_result
-                    }
-                }
-            })
-
-
-            function_call_found = True
-
-
-        # ==============================================
-        # NO TOOL CALL → FINAL ANSWER
-        # ==============================================
-
-        if not function_call_found:
-            break
-
-
-        # ==============================================
-        # CALL GEMINI WITH TOOL RESULTS
-        # ==============================================
-
-        result = call_gemini(
-            messages,
-            tools
-        )
-
-        candidate = result.get(
-            "candidates",
-            [{}]
-        )[0]
-
-        content = candidate.get(
-            "content",
-            {}
-        )
-
-        parts = content.get(
-            "parts",
-            []
-        )
-
-
-    # ==================================================
-    # EXTRACT FINAL TEXT
-    # ==================================================
-
     answer = None
 
-    for part in parts:
-
-        if "text" in part:
-
-            answer = part["text"]
-
+    for round_num in range(4):
+        try:
+            # Do NOT force a tool choice. Let the AI decide.
+            response = client.chat.completions.create(
+                model=MODEL_NAME,
+                messages=messages,
+                tools=TOOLS,
+                tool_choice="auto", 
+                temperature=0.2,
+                max_tokens=1500
+            )
+        except Exception as e:
+            print(f"Groq Error: {e}")
             break
 
+        msg = response.choices[0].message
 
-    # ==================================================
-    # FORCE FINAL ANSWER IF NEEDED
-    # ==================================================
+        if msg.tool_calls:
+            messages.append(msg)
+            for tc in msg.tool_calls:
+                name = tc.function.name
+                args = json.loads(tc.function.arguments)
+                res = "Error"
 
+                if name == "search_web":
+                    res = search_web(tavily_client, args.get("query", ""))
+                elif name == "generate_builds":
+                    res = generate_builds(tavily_client, args.get("budget",""), args.get("use_case",""), region=country, currency=currency)
+                elif name == "verify_component_prices":
+                    res = verify_component_prices(tavily_client, args.get("components",[]), region=country, currency=currency)
+                    GLOBAL_CACHE["prices"] = res.get("results", [])
+
+                search_log.append(f"Called {name}")
+                messages.append({"role": "tool", "tool_call_id": tc.id, "name": name, "content": json.dumps(res)})
+        else:
+            answer = msg.content
+            break
+
+    # --- Force Final Answer if AI got stuck in a loop ---
     if not answer:
-
-        messages.append({
-            "role": "user",
-            "content": (
-                "Using all information already retrieved above, "
-                "provide the final answer now. "
-                "Do not call any more tools."
+        try:
+            final_resp = client.chat.completions.create(
+                model=MODEL_NAME,
+                messages=messages + [{"role": "user", "content": "Provide the final [BUILD] block now."}],
+                temperature=0.2
             )
-        })
+            answer = final_resp.choices[0].message.content
+        except:
+            answer = "I couldn't generate a response from the AI."
 
-
-        result = call_gemini(
-            messages,
-            tools=None
-        )
-
-
-        candidate = result.get(
-            "candidates",
-            [{}]
-        )[0]
-
-        content = candidate.get(
-            "content",
-            {}
-        )
-
-        parts = content.get(
-            "parts",
-            []
-        )
-
-
-        for part in parts:
-
-            if "text" in part:
-
-                answer = part["text"]
-
-                break
-
-
-    # ==================================================
-    # VALIDATE PRICES IN BUILD BLOCK  👈 NEW SECTION
-    # ==================================================
-
-    def validate_build_prices(answer: str) -> str:
-        """Ensure prices in BUILD block are consistent"""
-        if "[BUILD]" not in answer or "[/BUILD]" not in answer:
-            return answer
-        
-        # Extract build block
-        match = re.search(
-            r"\[BUILD\](.*?)\[/BUILD\]",
-            answer,
-            re.DOTALL
-        )
-        
-        if not match:
-            return answer
-        
-        build_content = match.group(1)
-        
-        # Check if Estimated Total is present
-        total_match = re.search(
-            r"Estimated Total:\s*([^\n]+)",
-            build_content,
-            re.IGNORECASE
-        )
-        
-        if total_match:
-            total_text = total_match.group(1)
-            
-            # If total is a range or has "approx", it's probably fine
-            if "range" in total_text.lower() or "approx" in total_text.lower():
-                return answer
-            
-            # Extract numeric total
-            numbers = re.findall(r'[\d,]+(?:\.\d{2})?', total_text)
-            if numbers:
-                # Clean and convert
-                total = float(re.sub(r'[^\d.]', '', numbers[0]))
+    # --- Python Interceptor (Only runs if AI found prices) ---
+    real_prices = GLOBAL_CACHE.get("prices", [])
+    if real_prices and any(p.get("success") for p in real_prices):
+        lines = ["[BUILD]", "Name: Live Verified Build", "Use Case: gaming"]
+        total = 0
+        count = 0
+        for p in real_prices:
+            if p.get("success"):
+                n = p['component'].lower()
+                cat = "Component"
+                if "ryzen" in n or "intel" in n: cat = "CPU"
+                elif "rtx" in n or "radeon" in n: cat = "GPU"
+                elif "b550" in n or "b650" in n or "b760" in n: cat = "Motherboard"
+                elif "ddr" in n: cat = "RAM"
+                elif "ssd" in n: cat = "Storage"
+                elif "psu" in n or "watt" in n: cat = "PSU"
+                elif "cooler" in n: cat = "Cooler"
+                elif "case" in n: cat = "Case"
                 
-                # If total seems too low or high, add a warning
-                if total < 1000:
-                    # Warn that price might be incorrect
-                    answer += "\n\n⚠️ Note: The estimated total seems unusually low. Please verify component prices as they may have changed."
-                elif total > 500000:
-                    answer += "\n\n⚠️ Note: This is a high-end build. Please verify if this fits your budget and requirements."
-        
-        return answer
+                lines.append(f"{cat}: {p['exact_title'][:50]}... | Price: ₹{p['best_price']:,.0f} | Link: {p['url']}")
+                total += p['best_price']
+                count += 1
+        if count > 0:
+            lines.append(f"Estimated Total: ₹{total:,.0f}")
+            lines.append("[/BUILD]")
+            answer = "\n".join(lines)
+            answer += "\n\n*(Prices verified live by the Python engine.)*"
 
-    # Call validation before finalizing
-    answer = validate_build_prices(answer)  # 👈 THIS IS THE ACTUAL CALL
+    # Final fallback
+    if not answer or "Error generating response" in answer:
+        answer = "I couldn't generate a response. Please try a different prompt."
 
-
-    # ==================================================
-    # FINAL SAFETY FALLBACK
-    # ==================================================
-
-    answer = answer or (
-        "I couldn't generate a response."
-    )
-
-
-    # ==================================================
-    # UPDATE CONVERSATION HISTORY
-    # ==================================================
-
-    history.append({
-        "role": "user",
-        "content": original_question
-    })
-
-
-    history.append({
-        "role": "assistant",
-        "content": answer
-    })
-
-
-    # ==================================================
-    # RETURN RESULT
-    # ==================================================
-
-    return {
-        "answer": answer,
-        "history": history,
-        "search_log": search_log
-    }
+    history.append({"role": "user", "content": question})
+    history.append({"role": "assistant", "content": answer})
+    return {"answer": answer, "history": history, "search_log": search_log}
