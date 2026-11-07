@@ -1,9 +1,5 @@
 fastapi
 uvicorn
 python-dotenv
+groq
 tavily-python
-requests
-pydantic
-aiohttp
-beautifulsoup4
-lxml
